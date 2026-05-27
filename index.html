@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="permissions-policy" content="microphone=(self)">
+    <title>WPS AI 语音助手</title>
+    <style>
+        /* 页面背景透明，确保不遮挡 PPT 内容 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: transparent; 
+            overflow: hidden;
+            font-family: 'Segoe UI', "Microsoft YaHei", sans-serif;
+        }
+
+        /* API Key 输入面板样式 */
+        #api-key-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            gap: 10px;
+            background: rgba(10, 15, 30, 0.8);
+            padding: 12px 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 210, 255, 0.4);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+
+        #api-key-container.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        #api-key-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 210, 255, 0.5);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 4px;
+            outline: none;
+            width: 240px;
+            font-family: monospace;
+        }
+
+        #api-key-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        #api-key-input:focus {
+            border-color: #00d2ff;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        #api-key-btn {
+            background: #00d2ff;
+            color: #000;
+            border: none;
+            padding: 6px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        #api-key-btn:hover {
+            background: #00a8cc;
+        }
+
+        /* AI 视觉容器 */
+        #ai-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 80%;
+            max-width: 800px;
+            z-index: 9999;
+        }
+
+        /* 科技感 AI 呼吸光斑 */
+        #orb {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #aeeeee, #00d2ff, #0055ff);
+            opacity: 0; 
+            transition: opacity 0.8s ease-in-out;
+            pointer-events: none; 
+        }
+
+        #orb.active {
+            opacity: 1;
+            animation: breathe 2.5s infinite ease-in-out alternate;
+        }
+
+        @keyframes breathe {
+            0% {
+                transform: scale(0.9);
+                box-shadow: 0 0 15px rgba(0, 210, 255, 0.4), 0 0 30px rgba(0, 85, 255, 0.2);
+            }
+            100% {
+                transform: scale(1.1);
+                box-shadow: 0 0 25px rgba(0, 210, 255, 0.8), 0 0 50px rgba(0, 85, 255, 0.6), 0 0 80px rgba(0, 85, 255, 0.4);
+            }
+        }
+
+        /* ================= 核心修改：对话展示框 ================= */
+        #dialogue-box {
+            position: relative; /* 为伪元素绝对定位提供基准 */
+            margin-top: 20px;
+            padding: 15px 25px;
+            /* 内部底色换成纯白 */
+            background: #ffffff; 
+            border-radius: 12px;
+            width: 100%;
+            box-sizing: border-box;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+            
+            /* 利用 background-clip 裁剪掉边框区域的白色，露出底层的彩色伪元素 */
+            background-clip: padding-box;
+            border: 3px solid transparent; /* 边框粗细 */
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); /* 添加一点柔和的投影让白底更有质感 */
+        }
+
+        /* 流动渐变彩色边框层 */
+        #dialogue-box::before {
+            content: '';
+            position: absolute;
+            top: -3px; right: -3px; bottom: -3px; left: -3px; /* 偏移量必须等于边框宽度 */
+            z-index: -1;
+            border-radius: 14px; /* 比内部的 12px 稍微大一点，边缘更平滑 */
+            /* 预设的一组彩色渐变，首尾颜色保持一致以实现无缝循环 */
+            background: linear-gradient(90deg, #ff595e, #ffca3a, #8ac926, #1982c4, #6a4c93, #ff595e);
+            background-size: 200% 100%;
+            animation: gradientFlow 3s linear infinite;
+        }
+
+        @keyframes gradientFlow {
+            0% { background-position: 0% 0%; }
+            100% { background-position: 200% 0%; }
+        }
+
+        #dialogue-box.visible {
+            opacity: 1;
+        }
+
+        /* 白底下的文字颜色适配 */
+        #user-text {
+            font-size: 14px;
+            color: #0055ff; /* 用户文字改为较深的科技蓝 */
+            margin: 0 0 8px 0;
+            font-weight: 600;
+        }
+
+        #ai-text {
+            font-size: 16px;
+            line-height: 1.5;
+            margin: 0;
+            color: #333333; /* AI 文字改为深灰色，阅读更舒适 */
+        }
+    </style>
+</head>
+<body>
+
+    <div id="api-key-container">
+        <input type="password" id="api-key-input" placeholder="请粘贴 DeepSeek API Key (sk-...)">
+        <button id="api-key-btn">保存并启动</button>
+    </div>
+
+    <div id="ai-container">
+        <div id="orb"></div>
+        <div id="dialogue-box">
+            <p id="user-text"></p>
+            <p id="ai-text"></p>
+        </div>
+    </div>
+
+    <script>
+        // ================= 配置区域 =================
+        let apiKey = ''; 
+        const wakeWords = ['你好助手', 'hey ai', '黑ai', '嘿ai', '你好，助手']; 
+        const SLEEP_TIMEOUT = 30000; 
+
+        // ================= DOM 元素 =================
+        const orb = document.getElementById('orb');
+        const dialogueBox = document.getElementById('dialogue-box');
+        const userTextEl = document.getElementById('user-text');
+        const aiTextEl = document.getElementById('ai-text');
+        
+        const apiKeyContainer = document.getElementById('api-key-container');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const apiKeyBtn = document.getElementById('api-key-btn');
+
+        // ================= 状态与定时器 =================
+        let isAwake = false; 
+        let sleepTimer = null; 
+        let isFetching = false; 
+
+        // ================= 休眠控制逻辑 =================
+        function resetSleepTimer() {
+            if (sleepTimer) clearTimeout(sleepTimer);
+            sleepTimer = setTimeout(goToSleep, SLEEP_TIMEOUT);
+        }
+
+        function wakeUp() {
+            if (!isAwake) {
+                isAwake = true;
+                orb.classList.add('active'); 
+                dialogueBox.classList.add('visible'); 
+                userTextEl.innerText = "正在聆听...";
+                aiTextEl.innerText = "";
+            }
+            resetSleepTimer(); 
+        }
+
+        function goToSleep() {
+            isAwake = false;
+            orb.classList.remove('active');
+            dialogueBox.classList.remove('visible');
+            userTextEl.innerText = "";
+            aiTextEl.innerText = "";
+        }
+
+        // ================= DeepSeek 流式请求逻辑 =================
+        async function fetchDeepSeek(prompt) {
+            if (isFetching || !apiKey) return;
+            isFetching = true;
+            aiTextEl.innerText = ""; 
+
+            try {
+                const response = await fetch('https://wps-ai-proxy.237422272.workers.dev/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: [
+                            { role: 'system', content: '你是一个专业的PPT演示助手，回答请简明扼要。' },
+                            { role: 'user', content: prompt }
+                        ],
+                        stream: true 
+                    })
+                });
+
+                if (!response.ok) throw new Error(`API 请求失败: ${response.status}`);
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); 
+
+                    for (const line of lines) {
+                        if (line.trim() === '') continue;
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.slice(6).trim();
+                            if (dataStr === '[DONE]') continue; 
+
+                            try {
+                                const dataObj = JSON.parse(dataStr);
+                                const content = dataObj.choices[0]?.delta?.content;
+                                if (content) {
+                                    aiTextEl.innerText += content; 
+                                    resetSleepTimer(); 
+                                }
+                            } catch (e) {
+                                console.warn('解析流式JSON碎片失败', e, dataStr);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                aiTextEl.innerText = "网络或接口异常，请稍后重试。";
+                console.error(error);
+            } finally {
+                isFetching = false;
+                resetSleepTimer(); 
+            }
+        }
+
+        // ================= 语音识别与唤醒机制 =================
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+
+        if (!SpeechRecognition) {
+            userTextEl.innerText = "抱歉，当前浏览器内核不支持 Web Speech API";
+            dialogueBox.classList.add('visible');
+        } else {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true; 
+            recognition.interimResults = false; 
+            recognition.lang = 'zh-CN';
+
+            recognition.onresult = (event) => {
+                const lastResultIndex = event.results.length - 1;
+                const transcript = event.results[lastResultIndex][0].transcript.trim().toLowerCase();
+                
+                let prompt = transcript.replace(new RegExp(wakeWords.join('|'), 'gi'), '').trim();
+                prompt = prompt.replace(/^[。，？！.,?!]+$/, '').trim();
+
+                if (!isAwake) {
+                    const isWakeWordSpoken = wakeWords.some(word => transcript.includes(word));
+                    if (isWakeWordSpoken) {
+                        wakeUp();
+                        if (prompt) {
+                            userTextEl.innerText = `你说: ${prompt}`;
+                            fetchDeepSeek(prompt);
+                        }
+                    }
+                } else {
+                    if (prompt) {
+                        userTextEl.innerText = `你说: ${prompt}`;
+                        fetchDeepSeek(prompt);
+                    }
+                }
+            };
+
+            recognition.onerror = (e) => {
+                console.warn('语音识别异常/静音:', e.error);
+            };
+
+            recognition.onend = () => {
+                if (apiKey) { 
+                    try { recognition.start(); } catch (e) {}
+                }
+            };
+        }
+
+        // ================= 密钥配置交互逻辑 =================
+        function startAssistant() {
+            const inputVal = apiKeyInput.value.trim();
+            if (!inputVal.startsWith('sk-')) {
+                alert('请输入有效的 DeepSeek API Key (通常以 sk- 开头)');
+                return;
+            }
+            
+            apiKey = inputVal;
+            apiKeyContainer.classList.add('hidden'); 
+            
+            if (recognition) {
+                try {
+                    recognition.start();
+                    console.log('API Key 已保存，AI语音助手后台监听已启动...');
+                } catch (e) {
+                    console.error('麦克风启动失败，请检查浏览器权限', e);
+                }
+            }
+        }
+
+        apiKeyBtn.addEventListener('click', startAssistant);
+        apiKeyInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') startAssistant();
+        });
+    </script>
+</body>
+</html>
