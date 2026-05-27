@@ -301,6 +301,7 @@
         }
 
         // ================= 语音识别与唤醒机制 =================
+// ================= 语音识别与唤醒机制 =================
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
 
@@ -317,7 +318,12 @@
                 const lastResultIndex = event.results.length - 1;
                 const transcript = event.results[lastResultIndex][0].transcript.trim().toLowerCase();
                 
+                // 剔除唤醒词
                 let prompt = transcript.replace(new RegExp(wakeWords.join('|'), 'gi'), '').trim();
+                
+                // 【新增优化】剥离掉句首残留的标点符号（例如把 "，今天天气" 变成 "今天天气"）
+                prompt = prompt.replace(/^[。，？！.,?!\s]+/, '').trim();
+                // 如果过滤完只剩下纯标点，则拦截
                 prompt = prompt.replace(/^[。，？！.,?!]+$/, '').trim();
 
                 if (!isAwake) {
@@ -339,15 +345,26 @@
 
             recognition.onerror = (e) => {
                 console.warn('语音识别异常/静音:', e.error);
+                // 特殊处理网络断开或无麦克风权限错误
+                if (e.error === 'not-allowed' || e.error === 'network') {
+                    console.error("严重错误：麦克风未授权或网络异常");
+                }
             };
 
             recognition.onend = () => {
                 if (apiKey) { 
-                    try { recognition.start(); } catch (e) {}
+                    // 【核心修复】增加 1000 毫秒（1秒）的延迟再重启监听，避免内核拒绝瞬间的高频重启
+                    setTimeout(() => {
+                        try { 
+                            recognition.start(); 
+                            console.log('监听重启成功');
+                        } catch (e) {
+                            console.error('静音唤醒重启失败:', e);
+                        }
+                    }, 1000);
                 }
             };
         }
-
         // ================= 密钥配置交互逻辑 =================
         function startAssistant() {
             const inputVal = apiKeyInput.value.trim();
